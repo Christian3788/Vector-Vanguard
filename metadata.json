@@ -1,0 +1,6 @@
+{
+  "name": "Vector Vanguard: Tactical Tower Defense",
+  "description": "Production-grade, modular sci-fi HTML5 Canvas tower defense game with dynamic waves, multi-target vector targeting, status effects, and real-time tactical upgrades.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
