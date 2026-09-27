@@ -3,7 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type EnemyType = 'scout' | 'goliath' | 'swarmer' | 'mini-swarmer' | 'boss';
+export type EnemyType =
+  | 'scout'
+  | 'goliath'
+  | 'swarmer'
+  | 'mini-swarmer'
+  | 'infiltrator'
+  | 'shielded'
+  | 'boss';
 
 export interface Point {
   x: number;
@@ -11,9 +18,9 @@ export interface Point {
 }
 
 export interface StatusEffect {
-  type: 'slow' | 'burn';
+  type: 'slow' | 'burn' | 'stun';
   duration: number; // in seconds
-  factor?: number;   // e.g. 0.5 for 50% speed
+  factor?: number; // e.g. 0.5 for 50% speed
   damagePerSec?: number;
 }
 
@@ -26,7 +33,10 @@ export class Enemy {
   public baseSpeed: number;
   public maxHealth: number;
   public currentHealth: number;
-  public armor: number; // Flat or percentage armor damage reduction
+  public maxShield: number = 0;
+  public currentShield: number = 0;
+  public shieldRegenTimer: number = 0;
+  public armor: number; // Percentage armor damage reduction (0 to 1)
   public reward: number;
   public scoreValue: number;
   public color: string;
@@ -43,8 +53,13 @@ export class Enemy {
   // Status effects
   public slowEffect: { duration: number; factor: number } | null = null;
   public burnEffect: { duration: number; damagePerSec: number } | null = null;
+  public stunEffect: { duration: number } | null = null;
+  public brittleTimer: number = 0; // Thermal shock: 50% armor reduction
 
-  // Spawn tracking for rupturing enemies (e.g. Swarmer)
+  // Special mechanics & Boss Affixes
+  public bossAffix?: 'frenzy' | 'vampiric' | 'emp_shielded';
+  public isCloaked: boolean = false;
+  public cloakTimer: number = 0;
   public canRupture: boolean = false;
   public isDead: boolean = false;
 
@@ -53,25 +68,25 @@ export class Enemy {
     path: Point[],
     waveMultiplier: number = 1.0,
     startWaypointIndex: number = 0,
-    spawnOffset: Point = { x: 0, y: 0 }
+    spawnOffset: Point = { x: 0, y: 0 },
+    bossAffix?: 'frenzy' | 'vampiric' | 'emp_shielded'
   ) {
     this.id = Math.random().toString(36).substring(2, 9);
     this.type = type;
     this.path = path;
     this.currentWaypointIndex = startWaypointIndex;
+    this.bossAffix = bossAffix;
 
     const startPos = path[startWaypointIndex] || path[0];
     this.x = startPos.x + spawnOffset.x;
     this.y = startPos.y + spawnOffset.y;
 
-    // Calculate total path length for targeting calculations (FIRST / LAST)
     this.calculatePathLength();
 
-    // Configure archetype stats
     switch (type) {
       case 'scout':
         this.radius = 12;
-        this.baseSpeed = 135; // high velocity
+        this.baseSpeed = 135;
         this.maxHealth = Math.round(45 * waveMultiplier);
         this.armor = 0;
         this.reward = 12;
@@ -82,7 +97,7 @@ export class Enemy {
 
       case 'goliath':
         this.radius = 22;
-        this.baseSpeed = 38; // slow velocity
+        this.baseSpeed = 38;
         this.maxHealth = Math.round(380 * waveMultiplier);
         this.armor = 0.35; // 35% damage mitigation
         this.reward = 35;
@@ -105,7 +120,7 @@ export class Enemy {
 
       case 'mini-swarmer':
         this.radius = 8;
-        this.baseSpeed = 120;
+        this.baseSpeed = 125;
         this.maxHealth = Math.round(30 * waveMultiplier);
         this.armor = 0;
         this.reward = 5;
@@ -115,11 +130,38 @@ export class Enemy {
         this.canRupture = false;
         break;
 
+      case 'infiltrator':
+        this.radius = 13;
+        this.baseSpeed = 105;
+        this.maxHealth = Math.round(95 * waveMultiplier);
+        this.armor = 0.1;
+        this.reward = 24;
+        this.scoreValue = 130;
+        this.color = '#10b981';
+        this.glowColor = 'rgba(16, 185, 129, 0.7)';
+        this.cloakTimer = 2.0;
+        break;
+
+      case 'shielded':
+        this.radius = 18;
+        this.baseSpeed = 58;
+        this.maxHealth = Math.round(160 * waveMultiplier);
+        this.maxShield = Math.round(180 * waveMultiplier);
+        this.currentShield = this.maxShield;
+        this.armor = 0.15;
+        this.reward = 32;
+        this.scoreValue = 180;
+        this.color = '#06b6d4';
+        this.glowColor = 'rgba(6, 182, 212, 0.8)';
+        break;
+
       case 'boss':
         this.radius = 28;
         this.baseSpeed = 32;
         this.maxHealth = Math.round(1200 * waveMultiplier);
-        this.armor = 0.5; // 50% damage reduction
+        this.maxShield = Math.round(500 * waveMultiplier);
+        this.currentShield = this.maxShield;
+        this.armor = 0.45;
         this.reward = 150;
         this.scoreValue = 1000;
         this.color = '#a855f7';
@@ -142,47 +184,116 @@ export class Enemy {
     this.totalPathLength = len;
   }
 
-  /**
-   * Applies slow status effect. If an existing slow is stronger or longer, preserve appropriately.
-   */
   public applySlow(factor: number, duration: number): void {
     if (!this.slowEffect || this.slowEffect.factor > factor || this.slowEffect.duration < duration) {
       this.slowEffect = { factor, duration };
     }
   }
 
-  /**
-   * Applies burn status over time.
-   */
   public applyBurn(damagePerSec: number, duration: number): void {
     if (!this.burnEffect || this.burnEffect.duration < duration) {
       this.burnEffect = { damagePerSec, duration };
     }
   }
 
+  public applyStun(duration: number): void {
+    if (this.bossAffix === 'emp_shielded') return; // Immune to stuns
+    if (!this.stunEffect || this.stunEffect.duration < duration) {
+      this.stunEffect = { duration };
+    }
+  }
+
+  public applyBrittle(duration: number): void {
+    this.brittleTimer = Math.max(this.brittleTimer, duration);
+  }
+
   /**
-   * Computes effective damage taking armor into account.
+   * Computes effective damage taking shields, brittle fracture, and armor piercing into account.
    */
-  public takeDamage(rawDamage: number): { actualDamage: number; isFatal: boolean } {
-    const mitigated = Math.max(1, rawDamage * (1 - this.armor));
+  public takeDamage(
+    rawDamage: number,
+    armorPierce: number = 0
+  ): { actualDamage: number; isFatal: boolean; hitShield: boolean } {
+    let hitShield = false;
+    let effectiveDamage = rawDamage;
+
+    // Cloaked targets take 30% reduced damage due to optical dispersion
+    if (this.isCloaked) {
+      effectiveDamage *= 0.7;
+    }
+
+    // 1. Absorb with Shield first if available
+    if (this.currentShield > 0) {
+      hitShield = true;
+      this.shieldRegenTimer = 3.5; // Reset regen delay
+      if (this.currentShield >= effectiveDamage) {
+        this.currentShield -= effectiveDamage;
+        return { actualDamage: Math.round(effectiveDamage), isFatal: false, hitShield: true };
+      } else {
+        effectiveDamage -= this.currentShield;
+        this.currentShield = 0;
+      }
+    }
+
+    // 2. Mitigate remainder with armor (accounting for Brittle thermal shock & Tech tree armor piercing)
+    const baseArmor = this.brittleTimer > 0 ? this.armor * 0.5 : this.armor;
+    const effectiveArmor = Math.max(0, Math.min(0.9, baseArmor * (1 - armorPierce)));
+    const mitigated = Math.max(1, effectiveDamage * (1 - effectiveArmor));
     const actualDamage = Math.min(this.currentHealth, Math.round(mitigated * 10) / 10);
     this.currentHealth -= actualDamage;
 
     if (this.currentHealth <= 0) {
       this.currentHealth = 0;
       this.isDead = true;
-      return { actualDamage, isFatal: true };
+      return { actualDamage, isFatal: true, hitShield };
     }
-    return { actualDamage, isFatal: false };
+    return { actualDamage, isFatal: false, hitShield };
   }
 
   /**
-   * Update position along vector path nodes per tick
+   * Update enemy position, status effects, and special abilities
    */
   public update(dt: number, onBurnTick?: (dmg: number) => void): void {
     if (this.isDead || this.reachedEnd) return;
 
-    // Process Burn status effect
+    // Stun status effect (EMP): freezes all movements and actions
+    if (this.stunEffect) {
+      this.stunEffect.duration -= dt;
+      if (this.stunEffect.duration <= 0) {
+        this.stunEffect = null;
+      }
+      return;
+    }
+
+    // Infiltrator cloaking cycle
+    if (this.type === 'infiltrator') {
+      this.cloakTimer -= dt;
+      if (this.cloakTimer <= 0) {
+        this.isCloaked = !this.isCloaked;
+        this.cloakTimer = this.isCloaked ? 3.0 : 4.0;
+      }
+    }
+
+    // Brittle status timer countdown
+    if (this.brittleTimer > 0) {
+      this.brittleTimer -= dt;
+    }
+
+    // Boss Vampiric affix: heals 8 HP per second
+    if (this.bossAffix === 'vampiric' && this.currentHealth < this.maxHealth) {
+      this.currentHealth = Math.min(this.maxHealth, this.currentHealth + 8 * dt);
+    }
+
+    // Shield regeneration
+    if (this.maxShield > 0 && this.currentShield < this.maxShield) {
+      if (this.shieldRegenTimer > 0) {
+        this.shieldRegenTimer -= dt;
+      } else {
+        this.currentShield = Math.min(this.maxShield, this.currentShield + (this.maxShield * 0.25) * dt);
+      }
+    }
+
+    // Burn status effect
     if (this.burnEffect) {
       const tickDmg = this.burnEffect.damagePerSec * dt;
       this.currentHealth -= tickDmg;
@@ -198,8 +309,14 @@ export class Enemy {
       }
     }
 
-    // Process Slow status effect
+    // Slow status effect & Affix speed calculations
     let currentSpeed = this.baseSpeed;
+    if (this.bossAffix === 'frenzy') {
+      currentSpeed *= 1.4; // 40% speed frenzy
+    }
+    if (this.isCloaked) {
+      currentSpeed *= 1.25; // Cloak stealth burst speed
+    }
     if (this.slowEffect) {
       currentSpeed *= this.slowEffect.factor;
       this.slowEffect.duration -= dt;
@@ -208,7 +325,7 @@ export class Enemy {
       }
     }
 
-    // Path Node Navigation: advance linearly towards target waypoint
+    // Linear path navigation
     const targetNode = this.path[this.currentWaypointIndex + 1];
     if (!targetNode) {
       this.reachedEnd = true;
@@ -219,24 +336,19 @@ export class Enemy {
     const dy = targetNode.y - this.y;
     const distToNode = Math.sqrt(dx * dx + dy * dy);
 
-    // Update facing angle smoothly
     this.angle = Math.atan2(dy, dx);
-
     const step = currentSpeed * dt;
 
     if (distToNode <= step) {
-      // Reached or passed current waypoint node
       this.x = targetNode.x;
       this.y = targetNode.y;
       this.distanceTraveled += distToNode;
       this.currentWaypointIndex++;
 
-      // Check if finished entire path
       if (this.currentWaypointIndex >= this.path.length - 1) {
         this.reachedEnd = true;
       }
     } else {
-      // Move delta coordinates along direction vector
       const nx = dx / distToNode;
       const ny = dy / distToNode;
       this.x += nx * step;
@@ -246,23 +358,30 @@ export class Enemy {
   }
 
   /**
-   * Render enemy unit with health bar, armor insignia, and status effects
+   * Render enemy unit with hull, shield bubbles, health bars, and status effects
    */
   public draw(ctx: CanvasRenderingContext2D): void {
     ctx.save();
     ctx.translate(this.x, this.y);
 
-    // Render glow aura
-    ctx.shadowBlur = this.slowEffect ? 14 : 8;
-    ctx.shadowColor = this.slowEffect ? '#06b6d4' : this.glowColor;
+    // Alpha shimmer when cloaked
+    if (this.isCloaked) {
+      ctx.globalAlpha = 0.35 + Math.sin(Date.now() * 0.008) * 0.15;
+    }
 
-    // Rotate towards vector trajectory
+    // Stunned spark aura
+    if (this.stunEffect) {
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = '#38bdf8';
+    } else {
+      ctx.shadowBlur = this.slowEffect ? 14 : 8;
+      ctx.shadowColor = this.slowEffect ? '#06b6d4' : this.glowColor;
+    }
+
     ctx.rotate(this.angle);
 
-    // Draw unit model by type
     switch (this.type) {
       case 'scout': {
-        // Sleek supersonic delta-wing
         ctx.fillStyle = this.color;
         ctx.beginPath();
         ctx.moveTo(this.radius * 1.3, 0);
@@ -272,7 +391,6 @@ export class Enemy {
         ctx.closePath();
         ctx.fill();
 
-        // Inner cockpit light
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.arc(this.radius * 0.2, 0, 3, 0, Math.PI * 2);
@@ -280,8 +398,42 @@ export class Enemy {
         break;
       }
 
+      case 'infiltrator': {
+        // Sleek stealth phantom
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.moveTo(this.radius * 1.4, 0);
+        ctx.lineTo(-this.radius * 0.8, -this.radius * 0.6);
+        ctx.lineTo(-this.radius * 0.2, 0);
+        ctx.lineTo(-this.radius * 0.8, this.radius * 0.6);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = '#6ee7b7';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        break;
+      }
+
+      case 'shielded': {
+        // Heavy Cruiser
+        ctx.fillStyle = this.color;
+        const r = this.radius;
+        ctx.beginPath();
+        ctx.moveTo(r * 1.2, 0);
+        ctx.lineTo(-r * 0.8, -r * 0.9);
+        ctx.lineTo(-r * 0.5, 0);
+        ctx.lineTo(-r * 0.8, r * 0.9);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        break;
+      }
+
       case 'goliath': {
-        // Heavy octagonal armored walker
         ctx.fillStyle = this.color;
         const r = this.radius;
         ctx.beginPath();
@@ -295,12 +447,10 @@ export class Enemy {
         ctx.closePath();
         ctx.fill();
 
-        // Armor plating ridges
         ctx.strokeStyle = '#1e293b';
         ctx.lineWidth = 3;
         ctx.stroke();
 
-        // Core power gem
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.arc(0, 0, 6, 0, Math.PI * 2);
@@ -310,7 +460,6 @@ export class Enemy {
 
       case 'swarmer':
       case 'mini-swarmer': {
-        // Angular diamond hive runner
         ctx.fillStyle = this.color;
         const r = this.radius;
         ctx.beginPath();
@@ -328,7 +477,6 @@ export class Enemy {
       }
 
       case 'boss': {
-        // Apex Dreadnought multi-hull warship
         const r = this.radius;
         ctx.fillStyle = this.color;
         ctx.beginPath();
@@ -341,12 +489,10 @@ export class Enemy {
         ctx.closePath();
         ctx.fill();
 
-        // Pulsing shield edge
         ctx.strokeStyle = '#e9d5ff';
         ctx.lineWidth = 2.5;
         ctx.stroke();
 
-        // Boss core
         ctx.fillStyle = '#fdf4ff';
         ctx.beginPath();
         ctx.arc(0, 0, 8, 0, Math.PI * 2);
@@ -357,13 +503,27 @@ export class Enemy {
 
     ctx.restore();
 
-    // Render Health Bar & Status overlays (unrotated so text and bars are horizontal)
+    // Render Shield Bubble if active
+    if (this.currentShield > 0) {
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      ctx.beginPath();
+      ctx.arc(0, 0, this.radius + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+      ctx.lineWidth = 1.5;
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Render Health / Shield Bars & Badges
     ctx.save();
     ctx.translate(this.x, this.y);
 
     const barWidth = Math.max(28, this.radius * 2);
     const barHeight = 4;
-    const barY = -this.radius - 10;
+    const barY = -this.radius - 12;
 
     // Background bar
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
@@ -374,25 +534,41 @@ export class Enemy {
     ctx.fillStyle = healthPercent > 0.5 ? '#10b981' : healthPercent > 0.25 ? '#f59e0b' : '#ef4444';
     ctx.fillRect(-barWidth / 2, barY, barWidth * healthPercent, barHeight);
 
-    // Armor badge indicator if armored
+    // Shield fill above health
+    if (this.maxShield > 0 && this.currentShield > 0) {
+      const shieldPercent = Math.max(0, this.currentShield / this.maxShield);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(-barWidth / 2, barY - 3, barWidth * shieldPercent, 2.5);
+    }
+
+    // Armor badge indicator
     if (this.armor > 0) {
       ctx.fillStyle = '#38bdf8';
       ctx.font = '700 8px monospace';
-      ctx.fillText(`⛨${Math.round(this.armor * 100)}%`, -barWidth / 2 - 2, barY - 3);
+      ctx.fillText(`⛨${Math.round(this.armor * 100)}%`, -barWidth / 2 - 2, barY - 4);
     }
 
-    // Frost status indicator
-    if (this.slowEffect) {
-      ctx.fillStyle = '#06b6d4';
-      ctx.font = '10px sans-serif';
-      ctx.fillText('❄', barWidth / 2 - 8, barY + barHeight + 10);
-    }
-
-    // Burn status indicator
-    if (this.burnEffect) {
-      ctx.fillStyle = '#f97316';
-      ctx.font = '10px sans-serif';
-      ctx.fillText('🔥', barWidth / 2 + 3, barY + barHeight + 10);
+    // Status effect badges
+    if (this.stunEffect) {
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = '700 9px monospace';
+      ctx.fillText('⚡STUN', -barWidth / 2, barY + barHeight + 9);
+    } else {
+      if (this.slowEffect) {
+        ctx.fillStyle = '#06b6d4';
+        ctx.font = '10px sans-serif';
+        ctx.fillText('❄', barWidth / 2 - 8, barY + barHeight + 9);
+      }
+      if (this.burnEffect) {
+        ctx.fillStyle = '#f97316';
+        ctx.font = '10px sans-serif';
+        ctx.fillText('🔥', barWidth / 2 + 3, barY + barHeight + 9);
+      }
+      if (this.isCloaked) {
+        ctx.fillStyle = '#10b981';
+        ctx.font = '700 8px monospace';
+        ctx.fillText('CLOAK', -barWidth / 2, barY + barHeight + 8);
+      }
     }
 
     ctx.restore();

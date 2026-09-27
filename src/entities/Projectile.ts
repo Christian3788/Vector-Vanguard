@@ -15,6 +15,7 @@ export interface ProjectileImpact {
   effect?: 'slow' | 'burn';
   effectFactor?: number;
   effectDuration?: number;
+  armorPierce?: number;
 }
 
 export class Projectile {
@@ -31,6 +32,8 @@ export class Projectile {
   public color: string;
   public radius: number;
   public isTerminated: boolean = false;
+  public armorPierce: number = 0;
+  public onDetonate?: (x: number, y: number) => void;
 
   // Ballistic arc physics (for Mortar)
   public isBallistic: boolean = false;
@@ -57,6 +60,8 @@ export class Projectile {
       splashRadius?: number;
       color?: string;
       radius?: number;
+      armorPierce?: number;
+      onDetonate?: (x: number, y: number) => void;
       statusEffect?: 'slow' | 'burn';
       statusFactor?: number;
       statusDuration?: number;
@@ -74,10 +79,12 @@ export class Projectile {
     this.statusEffect = options.statusEffect;
     this.statusFactor = options.statusFactor;
     this.statusDuration = options.statusDuration;
+    this.armorPierce = options.armorPierce || 0;
+    this.onDetonate = options.onDetonate;
 
     switch (type) {
       case 'laser':
-        this.speed = options.speed || 680; // High velocity linear vector
+        this.speed = options.speed || 680;
         this.color = options.color || '#22d3ee';
         this.radius = options.radius || 3.5;
         this.isBallistic = false;
@@ -88,7 +95,7 @@ export class Projectile {
         this.color = options.color || '#fbbf24';
         this.radius = options.radius || 6.5;
         this.isBallistic = true;
-        this.splashRadius = options.splashRadius || 65; // Wide AoE
+        this.splashRadius = options.splashRadius || 65;
         {
           const dx = this.targetCoord.x - origin.x;
           const dy = this.targetCoord.y - origin.y;
@@ -106,26 +113,23 @@ export class Projectile {
     }
   }
 
-  /**
-   * Update projectile coordinate physics and vector trajectory.
-   * Returns impact payload if it reached target or touched ground.
-   */
   public update(dt: number): ProjectileImpact | null {
     if (this.isTerminated) return null;
 
-    // Track position history for glowing particle trail
     this.trail.unshift({ x: this.x, y: this.y });
     if (this.trail.length > this.maxTrailLength) {
       this.trail.pop();
     }
 
     if (this.isBallistic) {
-      // Parabolic flight towards ground coordinate
       const step = (this.speed * dt) / this.totalDistance;
       this.progress += step;
 
       if (this.progress >= 1) {
         this.isTerminated = true;
+        if (this.onDetonate) {
+          this.onDetonate(this.targetCoord.x, this.targetCoord.y);
+        }
         return {
           x: this.targetCoord.x,
           y: this.targetCoord.y,
@@ -134,28 +138,28 @@ export class Projectile {
           effect: this.statusEffect,
           effectFactor: this.statusFactor,
           effectDuration: this.statusDuration,
+          armorPierce: this.armorPierce,
         };
       }
 
-      // Linear interpolation for X, Y ground coordinates
       this.x = this.startCoord.x + (this.targetCoord.x - this.startCoord.x) * this.progress;
       this.y = this.startCoord.y + (this.targetCoord.y - this.startCoord.y) * this.progress;
       return null;
     }
 
-    // Direct tracking vector towards target enemy
-    // If target died or vanished, track last known target coordinate
     const targetX = this.target && !this.target.isDead ? this.target.x : this.targetCoord.x;
     const targetY = this.target && !this.target.isDead ? this.target.y : this.targetCoord.y;
 
     const dx = targetX - this.x;
     const dy = targetY - this.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-
     const step = this.speed * dt;
 
     if (dist <= step || dist < (this.target ? this.target.radius : 8)) {
       this.isTerminated = true;
+      if (this.onDetonate) {
+        this.onDetonate(targetX, targetY);
+      }
       return {
         x: targetX,
         y: targetY,
@@ -164,66 +168,29 @@ export class Projectile {
         effect: this.statusEffect,
         effectFactor: this.statusFactor,
         effectDuration: this.statusDuration,
+        armorPierce: this.armorPierce,
       };
     }
 
-    // Advance along linear vector
-    const nx = dx / dist;
-    const ny = dy / dist;
-    this.x += nx * step;
-    this.y += ny * step;
+    this.x += (dx / dist) * step;
+    this.y += (dy / dist) * step;
 
     return null;
   }
 
-  /**
-   * Render projectile with trail, glow, or parabolic shadow
-   */
   public draw(ctx: CanvasRenderingContext2D): void {
     if (this.isTerminated) return;
 
-    if (this.isBallistic) {
-      // Calculate current parabolic altitude: h = 4 * maxH * p * (1 - p)
-      const altitude = 4 * this.arcHeight * this.progress * (1 - this.progress);
-      const drawY = this.y - altitude;
-
-      // Draw ground shadow
-      ctx.save();
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-      ctx.beginPath();
-      ctx.ellipse(this.x, this.y, this.radius * 1.1, this.radius * 0.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // Draw ballistic plasma shell
-      ctx.save();
-      ctx.shadowBlur = 12;
-      ctx.shadowColor = this.color;
-      ctx.fillStyle = this.color;
-      ctx.beginPath();
-      ctx.arc(this.x, drawY, this.radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Inner intense core
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(this.x, drawY, this.radius * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      return;
-    }
-
-    // Render motion trail
     if (this.trail.length > 1) {
       ctx.save();
-      ctx.lineCap = 'round';
-      for (let i = 0; i < this.trail.length - 1; i++) {
-        const p1 = this.trail[i];
-        const p2 = this.trail[i + 1];
-        const alpha = (1 - i / this.trail.length) * 0.55;
+      for (let i = 1; i < this.trail.length; i++) {
+        const p1 = this.trail[i - 1];
+        const p2 = this.trail[i];
+        const alpha = (1 - i / this.trail.length) * 0.45;
+
         ctx.strokeStyle = this.color;
         ctx.globalAlpha = alpha;
-        ctx.lineWidth = Math.max(1, this.radius * (1 - i / this.trail.length));
+        ctx.lineWidth = this.radius * (1 - i / this.trail.length);
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p2.x, p2.y);
@@ -232,20 +199,32 @@ export class Projectile {
       ctx.restore();
     }
 
-    // Render projectile head
     ctx.save();
+    let renderX = this.x;
+    let renderY = this.y;
+
+    if (this.isBallistic) {
+      const arcOffset = Math.sin(this.progress * Math.PI) * this.arcHeight;
+      renderY = this.y - arcOffset;
+
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius * 0.7, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fill();
+    }
+
     ctx.shadowBlur = 10;
     ctx.shadowColor = this.color;
     ctx.fillStyle = this.color;
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.arc(renderX, renderY, this.radius, 0, Math.PI * 2);
     ctx.fill();
 
-    // Hot center
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius * 0.4, 0, Math.PI * 2);
+    ctx.arc(renderX, renderY, this.radius * 0.45, 0, Math.PI * 2);
     ctx.fill();
+
     ctx.restore();
   }
 }

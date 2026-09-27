@@ -3,14 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Game } from './engine/Game';
+import { Game, GameMode, MapSector } from './engine/Game';
+import { EnemyType } from './entities/Enemy';
+import { HazardType } from './entities/Hazards';
 import { TargetingMode, TowerType } from './entities/Tower';
 
 document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
   if (!canvas) throw new Error('Game canvas element not found');
 
-  // Initialize Game instance
   const game = new Game(canvas);
 
   // -------------------------------------------------------------
@@ -26,13 +27,12 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.style.width = `${logicalWidth}px`;
     canvas.style.height = `${logicalHeight}px`;
 
-    // Scale canvas context to map logical units to high-res pixels
     game.ctx.scale(dpr, dpr);
   }
   setupHiDPICanvas();
 
   // -------------------------------------------------------------
-  // Mouse & Pointer Interaction
+  // Coordinate Mapping
   // -------------------------------------------------------------
   function getCanvasCoordinates(e: MouseEvent): { x: number; y: number } {
     const rect = canvas.getBoundingClientRect();
@@ -62,30 +62,44 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   canvas.addEventListener('click', () => {
-    // If a tower archetype is selected in build menu, attempt placement
-    if (game.selectedBuildType) {
-      const placed = game.buildTowerAtHover();
+    // 1. If an active commander ability is being targeted, trigger ground strike!
+    if (game.activeAbilityTarget) {
+      game.executeGroundTargetedAbility(game.mousePixelX, game.mousePixelY);
+      return;
+    }
+
+    // 2. If a trap is selected, attempt trap deployment
+    if (game.selectedBuildTrap) {
+      const placed = game.buildTrapAtHover();
       if (placed) {
-        // Clear build selection after successful placement
         clearBuildSelection();
       }
       return;
     }
 
-    // Otherwise, check if user clicked on an existing placed tower
+    // 3. If a tower archetype is selected in build menu, attempt placement
+    if (game.selectedBuildType) {
+      const placed = game.buildTowerAtHover();
+      if (placed) {
+        clearBuildSelection();
+      }
+      return;
+    }
+
+    // 4. Otherwise, inspect clicked tower or deselect
     const clickedTower = game.getTowerAt(game.mouseGridX, game.mouseGridY);
     if (clickedTower) {
       game.selectTower(clickedTower);
     } else {
-      // Clicked on empty terrain, deselect
       game.selectTower(null);
     }
   });
 
-  // Right-click cancels build mode
+  // Right-click cancels build / ability targeting mode
   canvas.addEventListener('contextmenu', (e: MouseEvent) => {
     e.preventDefault();
     clearBuildSelection();
+    game.activeAbilityTarget = null;
     game.selectTower(null);
   });
 
@@ -93,26 +107,46 @@ document.addEventListener('DOMContentLoaded', () => {
   // Sidebar Build Card Selector
   // -------------------------------------------------------------
   const towerCards = document.querySelectorAll('.tower-card');
+  const trapCards = document.querySelectorAll('.trap-card');
 
   function clearBuildSelection() {
     game.selectedBuildType = null;
+    game.selectedBuildTrap = null;
     towerCards.forEach((c) => c.classList.remove('selected'));
+    trapCards.forEach((c) => c.classList.remove('selected'));
   }
 
   function selectBuildCard(type: TowerType) {
     if (game.selectedBuildType === type) {
-      // Toggle off if already selected
       clearBuildSelection();
       return;
     }
 
     clearBuildSelection();
-    game.selectTower(null); // Clear selected existing tower
+    game.activeAbilityTarget = null;
+    game.selectTower(null);
 
     const card = document.getElementById(`card-tower-${type}`);
     if (card) {
       card.classList.add('selected');
       game.selectedBuildType = type;
+    }
+  }
+
+  function selectTrapCard(trapType: HazardType) {
+    if (game.selectedBuildTrap === trapType) {
+      clearBuildSelection();
+      return;
+    }
+
+    clearBuildSelection();
+    game.activeAbilityTarget = null;
+    game.selectTower(null);
+
+    const card = document.getElementById(`card-trap-${trapType}`);
+    if (card) {
+      card.classList.add('selected');
+      game.selectedBuildTrap = trapType;
     }
   }
 
@@ -125,12 +159,82 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  trapCards.forEach((card) => {
+    card.addEventListener('click', () => {
+      const trapType = card.getAttribute('data-trap') as HazardType;
+      if (trapType) {
+        selectTrapCard(trapType);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------
+  // Map Sector Switching
+  // -------------------------------------------------------------
+  const sectorPills = document.querySelectorAll('.sector-pill');
+  sectorPills.forEach((pill) => {
+    pill.addEventListener('click', () => {
+      const sector = pill.getAttribute('data-sector') as MapSector;
+      if (sector) {
+        sectorPills.forEach((p) => p.classList.remove('active'));
+        pill.classList.add('active');
+        clearBuildSelection();
+        game.setSector(sector);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------
+  // Game Mode Switching
+  // -------------------------------------------------------------
+  const modePills = document.querySelectorAll('.mode-pill');
+  modePills.forEach((pill) => {
+    pill.addEventListener('click', () => {
+      const mode = pill.getAttribute('data-mode') as GameMode;
+      if (mode) {
+        modePills.forEach((p) => p.classList.remove('active'));
+        pill.classList.add('active');
+        clearBuildSelection();
+        game.setGameMode(mode);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------
+  // Commander Superweapons
+  // -------------------------------------------------------------
+  const btnEmp = document.getElementById('btn-ability-emp');
+  btnEmp?.addEventListener('click', () => {
+    clearBuildSelection();
+    game.triggerAbilityEmp();
+  });
+
+  const btnOrbital = document.getElementById('btn-ability-orbital');
+  btnOrbital?.addEventListener('click', () => {
+    clearBuildSelection();
+    game.triggerAbilityOrbital();
+  });
+
+  const btnOverdrive = document.getElementById('btn-ability-overdrive');
+  btnOverdrive?.addEventListener('click', () => {
+    game.triggerAbilityOverdrive();
+  });
+
+  // -------------------------------------------------------------
+  // Global Range Toggle
+  // -------------------------------------------------------------
+  const btnToggleRanges = document.getElementById('btn-toggle-ranges');
+  btnToggleRanges?.addEventListener('click', () => {
+    game.showAllRanges = !game.showAllRanges;
+    btnToggleRanges.classList.toggle('active', game.showAllRanges);
+  });
+
   // -------------------------------------------------------------
   // Inspector Panel Action Bindings
   // -------------------------------------------------------------
   const btnUpgrade = document.getElementById('btn-upgrade-tower');
   btnUpgrade?.addEventListener('click', () => {
-    game.upgradeSelectedTower();
+    game.upgradeSelectedTowerStandard();
   });
 
   const btnSell = document.getElementById('btn-sell-tower');
@@ -138,7 +242,6 @@ document.addEventListener('DOMContentLoaded', () => {
     game.sellSelectedTower();
   });
 
-  // Targeting Mode Pills
   const targetingPills = document.querySelectorAll('.target-pill');
   targetingPills.forEach((pill) => {
     pill.addEventListener('click', () => {
@@ -147,6 +250,17 @@ document.addEventListener('DOMContentLoaded', () => {
         game.setTargetingMode(mode);
       }
     });
+  });
+
+  // Level 4 Specialization Branch Buttons
+  const btnBranchA = document.getElementById('btn-branch-a');
+  btnBranchA?.addEventListener('click', () => {
+    game.upgradeSelectedTowerBranch('A');
+  });
+
+  const btnBranchB = document.getElementById('btn-branch-b');
+  btnBranchB?.addEventListener('click', () => {
+    game.upgradeSelectedTowerBranch('B');
   });
 
   // -------------------------------------------------------------
@@ -208,31 +322,149 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // -------------------------------------------------------------
+  // Tech Tree Modal Bindings
+  // -------------------------------------------------------------
+  const btnTechTree = document.getElementById('btn-tech-tree');
+  btnTechTree?.addEventListener('click', () => {
+    game.toggleTechTreeModal();
+  });
+
+  const btnCloseTech = document.getElementById('btn-close-tech');
+  btnCloseTech?.addEventListener('click', () => {
+    game.closeTechTreeModal();
+  });
+
+  const btnResetTech = document.getElementById('btn-reset-tech');
+  btnResetTech?.addEventListener('click', () => {
+    if (confirm('Reset and reclaim all spent Tech Points?')) {
+      game.resetTechTree();
+    }
+  });
+
+  // -------------------------------------------------------------
+  // After-Action Debrief Modal Bindings
+  // -------------------------------------------------------------
+  const btnDebrief = document.getElementById('btn-debrief');
+  btnDebrief?.addEventListener('click', () => {
+    game.toggleDebriefModal();
+  });
+
+  const btnCloseDebrief = document.getElementById('btn-close-debrief');
+  btnCloseDebrief?.addEventListener('click', () => {
+    game.closeDebriefModal();
+  });
+
+  const btnViewDebrief = document.getElementById('btn-view-debrief-modal');
+  btnViewDebrief?.addEventListener('click', () => {
+    const modalOverlay = document.getElementById('modal-overlay');
+    if (modalOverlay) modalOverlay.classList.remove('active');
+    game.openDebriefModal();
+  });
+
+  // -------------------------------------------------------------
+  // Hostile Codex Modal Bindings
+  // -------------------------------------------------------------
+  const btnCodex = document.getElementById('btn-codex');
+  btnCodex?.addEventListener('click', () => {
+    game.toggleCodexModal();
+  });
+
+  const btnOpenCodexLink = document.getElementById('btn-open-codex-link');
+  btnOpenCodexLink?.addEventListener('click', () => {
+    game.openCodexModal();
+  });
+
+  const btnCloseCodex = document.getElementById('btn-close-codex');
+  btnCloseCodex?.addEventListener('click', () => {
+    game.closeCodexModal();
+  });
+
+  const codexNavItems = document.querySelectorAll('.codex-nav-item');
+  codexNavItems.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const enemyType = btn.getAttribute('data-enemy') as EnemyType;
+      if (enemyType) game.renderCodexEnemy(enemyType);
+    });
+  });
+
+  const quickCodexRows = document.querySelectorAll('.codex-quick-btn');
+  quickCodexRows.forEach((row) => {
+    row.addEventListener('click', () => {
+      const enemyType = row.getAttribute('data-enemy') as EnemyType;
+      if (enemyType) game.openCodexModal(enemyType);
+    });
+  });
+
+  // -------------------------------------------------------------
+  // Achievements Modal Bindings
+  // -------------------------------------------------------------
+  const btnAchievements = document.getElementById('btn-achievements');
+  btnAchievements?.addEventListener('click', () => {
+    game.toggleAchievementsModal();
+  });
+
+  const btnCloseAchievements = document.getElementById('btn-close-achievements');
+  btnCloseAchievements?.addEventListener('click', () => {
+    game.closeAchievementsModal();
+  });
+
+  const achievementsModal = document.getElementById('achievements-modal');
+  achievementsModal?.addEventListener('click', (e: MouseEvent) => {
+    if (e.target === achievementsModal) {
+      game.closeAchievementsModal();
+    }
+  });
+
+  // -------------------------------------------------------------
   // Keyboard Hotkeys
   // -------------------------------------------------------------
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     const key = e.key.toLowerCase();
 
-    // Prevent default scrolling for Space
     if (e.code === 'Space') {
       e.preventDefault();
       btnPause?.click();
       return;
     }
 
-    if (key === '1') {
-      selectBuildCard('gatling');
-    } else if (key === '2') {
-      selectBuildCard('mortar');
-    } else if (key === '3') {
-      selectBuildCard('frost');
-    } else if (key === 'escape') {
+    if (key === '1') selectBuildCard('gatling');
+    else if (key === '2') selectBuildCard('mortar');
+    else if (key === '3') selectBuildCard('frost');
+    else if (key === '4') selectBuildCard('tesla');
+    else if (key === '5') selectBuildCard('incinerator');
+    else if (key === '6') selectTrapCard('tripwire');
+    else if (key === '7') selectTrapCard('cryo_mine');
+    else if (key === '8') selectTrapCard('concussion_mine');
+    else if (key === 'q') {
       clearBuildSelection();
+      game.triggerAbilityEmp();
+    } else if (key === 'e') {
+      clearBuildSelection();
+      game.triggerAbilityOrbital();
+    } else if (key === 'r') {
+      game.triggerAbilityOverdrive();
+    } else if (key === 'g') {
+      btnToggleRanges?.click();
+    } else if (key === 't') {
+      game.toggleTechTreeModal();
+    } else if (key === 'c') {
+      game.toggleCodexModal();
+    } else if (key === 'd') {
+      game.toggleDebriefModal();
+    } else if (key === 'a') {
+      game.toggleAchievementsModal();
+    } else if (key === 'escape') {
+      game.closeAchievementsModal();
+      game.closeTechTreeModal();
+      game.closeDebriefModal();
+      game.closeCodexModal();
+      clearBuildSelection();
+      game.activeAbilityTarget = null;
       game.selectTower(null);
     } else if (key === 'n') {
       game.startNextWave(true);
     } else if (key === 'u') {
-      game.upgradeSelectedTower();
+      game.upgradeSelectedTowerStandard();
     } else if (key === 's') {
       game.sellSelectedTower();
     }
@@ -247,16 +479,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const dt = (currentFrameTime - lastFrameTime) / 1000;
     lastFrameTime = currentFrameTime;
 
-    // Execute state updates
     game.update(dt);
-
-    // Render single canvas frame
     game.render();
 
     requestAnimationFrame(gameLoop);
   }
 
-  // Kickoff animation loop
   requestAnimationFrame((time) => {
     lastFrameTime = time;
     requestAnimationFrame(gameLoop);

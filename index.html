@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vector Vanguard: Tactical Tower Defense</title>
-    <meta name="description" content="Production-grade, modular sci-fi HTML5 Canvas tower defense game with dynamic waves, multi-target vector targeting, status effects, and real-time tactical upgrades." />
+    <meta name="description" content="Production-grade sci-fi HTML5 Canvas tower defense game with dual-branch tower specializations, elemental combos, battlefield hazards, persistent research tech tree, dynamic weather, and multi-game modes." />
     <meta property="og:title" content="Vector Vanguard: Tactical Tower Defense" />
-    <meta property="og:description" content="Production-grade, modular sci-fi HTML5 Canvas tower defense game with dynamic waves, multi-target vector targeting, status effects, and real-time tactical upgrades." />
+    <meta property="og:description" content="Production-grade sci-fi HTML5 Canvas tower defense game with dual-branch tower specializations, elemental combos, battlefield hazards, persistent research tech tree, dynamic weather, and multi-game modes." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="/styles.css" />
@@ -18,18 +18,39 @@
         <div class="brand-title">
           <span class="brand-badge">DEFENSE GRID</span>
           <span class="brand-text">VECTOR VANGUARD</span>
+
+          <!-- Sector Selector -->
+          <div class="sector-select-group" style="margin-left: 0.25rem;">
+            <button class="sector-pill active" data-sector="alpha" title="Sector Alpha: Serpentine Pass">Alpha</button>
+            <button class="sector-pill" data-sector="beta" title="Sector Beta: Twin Chokepoints">Beta</button>
+            <button class="sector-pill" data-sector="gamma" title="Sector Gamma: Spiral Citadel">Gamma</button>
+          </div>
+
+          <!-- Game Mode Selector -->
+          <div class="mode-select-group">
+            <button class="mode-pill active" data-mode="campaign" title="Standard Campaign Mode">Campaign</button>
+            <button class="mode-pill" data-mode="endless" title="Endless Survival Mode">Endless</button>
+            <button class="mode-pill" data-mode="boss_rush" title="Boss Rush Battles">Boss Rush</button>
+            <button class="mode-pill" data-mode="sandbox" title="Tactical Simulation Sandbox">Sandbox</button>
+          </div>
+
+          <!-- Dynamic Environmental Weather Indicator -->
+          <div id="hud-weather-badge" class="weather-pill weather-clear" title="Environmental Atmospheric Conditions">
+            <span class="icon">☀️</span>
+            <span>ATMOSPHERE: CLEAR</span>
+          </div>
         </div>
 
         <div class="hud-metrics">
           <div class="metric-pill metric-gold" title="Tactical Energy Credits">
             <span class="icon">⬢</span>
             <span class="label">CREDITS:</span>
-            <span class="val" id="hud-gold">450</span>
+            <span class="val" id="hud-gold">480</span>
           </div>
           <div class="metric-pill metric-health" title="Core Base Integrity">
             <span class="icon">♥</span>
             <span class="label">CORE:</span>
-            <span class="val" id="hud-health">20</span>
+            <span class="val" id="hud-health">20/20</span>
           </div>
           <div class="metric-pill metric-wave" title="Current Wave Cycle">
             <span class="icon">⎔</span>
@@ -47,14 +68,34 @@
           <button id="btn-next-wave" class="hud-btn hud-btn-primary" title="Deploy next threat wave [N]">
             <span>⚡ NEXT WAVE</span>
           </button>
-          <button id="btn-speed-1" class="hud-btn active" title="Normal Speed (1x) [1]">1x</button>
-          <button id="btn-speed-2" class="hud-btn" title="Fast Speed (2x) [2]">2x</button>
-          <button id="btn-speed-4" class="hud-btn" title="Turbo Speed (4x) [3]">4x</button>
+          <button id="btn-toggle-ranges" class="hud-btn" title="Toggle All Tower Ranges [G]">🎯 RANGES</button>
+          <button id="btn-tech-tree" class="hud-btn" title="Open Research Tech Tree [T]">
+            <span>⭐</span>
+            <span>RESEARCH</span>
+          </button>
+          <button id="btn-codex" class="hud-btn" title="Open Hostile Codex [C]">
+            <span>📖</span>
+            <span>CODEX</span>
+          </button>
+          <button id="btn-debrief" class="hud-btn" title="View Combat Damage Telemetry [D]">
+            <span>📊</span>
+            <span>DEBRIEF</span>
+          </button>
+          <button id="btn-achievements" class="hud-btn" title="View Tactical Achievements [A]">
+            <span>🏆</span>
+            <span id="hud-achievements-count">0/14</span>
+          </button>
+          <button id="btn-speed-1" class="hud-btn active" title="1x Normal Speed">1x</button>
+          <button id="btn-speed-2" class="hud-btn" title="2x Fast Speed">2x</button>
+          <button id="btn-speed-4" class="hud-btn" title="4x Turbo Speed">4x</button>
           <button id="btn-pause" class="hud-btn" title="Pause simulation [Space]">⏸</button>
-          <button id="btn-sound" class="hud-btn" title="Toggle Sound FX">🔊</button>
-          <button id="btn-reset" class="hud-btn" title="Restart Operation">↺</button>
+          <button id="btn-sound" class="hud-btn" title="Toggle Audio FX">🔊</button>
+          <button id="btn-reset" class="hud-btn" title="Restart Battlefield Operation">↺</button>
         </div>
       </header>
+
+      <!-- Achievement Toast Container -->
+      <div id="achievement-toast-container"></div>
 
       <!-- Main Workspace -->
       <main id="workspace">
@@ -62,17 +103,31 @@
         <div id="canvas-viewport">
           <canvas id="game-canvas" width="1000" height="650"></canvas>
 
-          <!-- Floating Tactical HUD -->
+          <!-- Wave Status Overlay -->
           <div id="canvas-overlay">
             <div class="wave-progress-card">
               <div class="wave-title-row">
                 <span id="hud-wave-status">WAVE 1 PREPARING</span>
-                <span id="hud-wave-countdown">5s</span>
+                <span id="hud-wave-countdown">5.0s</span>
               </div>
               <div class="wave-progress-bar">
                 <div class="wave-progress-fill" id="hud-wave-progress"></div>
               </div>
             </div>
+          </div>
+
+          <!-- Bottom Commander Superweapon Dock -->
+          <div id="commander-dock">
+            <span class="dock-title">SUPERWEAPONS:</span>
+            <button id="btn-ability-emp" class="ability-btn ability-btn-emp" title="EMP Stun Blast [Q] - Stuns all enemies and breaks shields in area">
+              <span>⚡ EMP BLAST [Q]</span>
+            </button>
+            <button id="btn-ability-orbital" class="ability-btn ability-btn-orbital" title="Orbital Bombardment [E] - Heavy tactical missile strike for 450 damage">
+              <span>🎯 ORBITAL STRIKE [E]</span>
+            </button>
+            <button id="btn-ability-overdrive" class="ability-btn ability-btn-overdrive" title="Overdrive Hypercharge [R] - Doubles all towers' fire rate for 6s">
+              <span>🚀 OVERDRIVE [R]</span>
+            </button>
           </div>
         </div>
 
@@ -82,7 +137,7 @@
           <section>
             <div class="panel-section-title">
               <span>DEFENSE ARSENAL</span>
-              <span style="font-size:0.68rem; color:#94a3b8;">KEYS [1-3]</span>
+              <span style="font-size:0.68rem; color:#94a3b8;">KEYS [1-5]</span>
             </div>
             <div class="tower-picker-grid">
               <!-- Gatling Laser -->
@@ -92,10 +147,10 @@
                 </div>
                 <div class="tower-info">
                   <div class="tower-header">
-                    <span class="tower-name">Gatling Laser</span>
+                    <span class="tower-name">Gatling Laser [1]</span>
                     <span class="tower-cost">100 ⬢</span>
                   </div>
-                  <div class="tower-desc">Rapid single-target beam. Devastating sustained fire against solo targets.</div>
+                  <div class="tower-desc">Rapid single-target beam. LVL 4: Railgun / Pulse.</div>
                   <div class="tower-specs">
                     <span>SPD: ULTRA</span>
                     <span>•</span>
@@ -111,10 +166,10 @@
                 </div>
                 <div class="tower-info">
                   <div class="tower-header">
-                    <span class="tower-name">Plasma Mortar</span>
+                    <span class="tower-name">Plasma Mortar [2]</span>
                     <span class="tower-cost">160 ⬢</span>
                   </div>
-                  <div class="tower-desc">Heavy ballistic plasma shell with wide Area of Effect (AoE) blast shockwave.</div>
+                  <div class="tower-desc">Ballistic plasma shell. LVL 4: Cluster / Napalm.</div>
                   <div class="tower-specs">
                     <span>SPD: SLOW</span>
                     <span>•</span>
@@ -130,10 +185,10 @@
                 </div>
                 <div class="tower-info">
                   <div class="tower-header">
-                    <span class="tower-name">Frost Beam</span>
+                    <span class="tower-name">Frost Beam [3]</span>
                     <span class="tower-cost">125 ⬢</span>
                   </div>
-                  <div class="tower-desc">Continuous cryogenic ray. Imposes 50% velocity reduction status debuff.</div>
+                  <div class="tower-desc">Cryogenic slow ray. LVL 4: Blizzard / Freeze Stun.</div>
                   <div class="tower-specs">
                     <span>SLOW: 50%</span>
                     <span>•</span>
@@ -141,10 +196,96 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Tesla Coil -->
+              <div class="tower-card" id="card-tower-tesla" data-tower="tesla">
+                <div class="tower-icon-box" style="background: rgba(2, 132, 199, 0.2); border: 1px solid #0284c7; color: #38bdf8;">
+                  🌩
+                </div>
+                <div class="tower-info">
+                  <div class="tower-header">
+                    <span class="tower-name">Tesla Coil [4]</span>
+                    <span class="tower-cost">185 ⬢</span>
+                  </div>
+                  <div class="tower-desc">Branching chain lightning. LVL 4: 6x Arc / EMP.</div>
+                  <div class="tower-specs">
+                    <span>CHAIN: 3x</span>
+                    <span>•</span>
+                    <span>RNG: 140</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Thermal Incinerator -->
+              <div class="tower-card" id="card-tower-incinerator" data-tower="incinerator">
+                <div class="tower-icon-box" style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #f87171;">
+                  🔥
+                </div>
+                <div class="tower-info">
+                  <div class="tower-header">
+                    <span class="tower-name">Thermal Incinerator [5]</span>
+                    <span class="tower-cost">145 ⬢</span>
+                  </div>
+                  <div class="tower-desc">Continuous flame cone. LVL 4: Magma / Meltdown.</div>
+                  <div class="tower-specs">
+                    <span>CONE: 45°</span>
+                    <span>•</span>
+                    <span>RNG: 125</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 
-          <!-- Inspector Panel (Selected Tower) -->
+          <!-- Deployable Road Traps -->
+          <section>
+            <div class="panel-section-title">
+              <span>DEPLOYABLE TRAPS (ROAD)</span>
+              <span style="font-size:0.68rem; color:#94a3b8;">KEYS [6-8]</span>
+            </div>
+            <div class="trap-picker-grid">
+              <div class="trap-card" id="card-trap-tripwire" data-trap="tripwire">
+                <div class="trap-icon-box" style="background: rgba(6, 182, 212, 0.2); border: 1px solid #06b6d4; color: #22d3ee;">
+                  ⚡
+                </div>
+                <div class="tower-info">
+                  <div class="tower-header">
+                    <span class="tower-name">Laser Tripwire [6]</span>
+                    <span class="tower-cost">40 ⬢</span>
+                  </div>
+                  <div class="tower-desc">140 damage across road (3 charges).</div>
+                </div>
+              </div>
+
+              <div class="trap-card" id="card-trap-cryo_mine" data-trap="cryo_mine">
+                <div class="trap-icon-box" style="background: rgba(139, 92, 246, 0.2); border: 1px solid #8b5cf6; color: #c084fc;">
+                  ❄️
+                </div>
+                <div class="tower-info">
+                  <div class="tower-header">
+                    <span class="tower-name">Cryo Landmine [7]</span>
+                    <span class="tower-cost">35 ⬢</span>
+                  </div>
+                  <div class="tower-desc">Freezes road in 75px radius on contact.</div>
+                </div>
+              </div>
+
+              <div class="trap-card" id="card-trap-concussion_mine" data-trap="concussion_mine">
+                <div class="trap-icon-box" style="background: rgba(249, 115, 22, 0.2); border: 1px solid #f97316; color: #fb923c;">
+                  💥
+                </div>
+                <div class="tower-info">
+                  <div class="tower-header">
+                    <span class="tower-name">Concussion Mine [8]</span>
+                    <span class="tower-cost">50 ⬢</span>
+                  </div>
+                  <div class="tower-desc">Heavy blast dealing 240 damage in 70px AoE.</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Inspector Panel -->
           <section id="inspector-panel" style="display: none;">
             <div class="panel-section-title">
               <span>TOWER TELEMETRY</span>
@@ -187,7 +328,7 @@
                 </div>
               </div>
 
-              <!-- Upgrade / Sell Actions -->
+              <!-- Standard Upgrade / Sell Actions -->
               <div class="inspector-actions">
                 <button id="btn-upgrade-tower" class="btn-upgrade">
                   <span id="upgrade-label">UPGRADE</span>
@@ -198,58 +339,282 @@
                   <span id="sell-refund" style="font-size:0.7rem; display:block; opacity:0.85;">70 ⬢</span>
                 </button>
               </div>
+
+              <!-- Level 4 Branch Choice Container (Replaces upgrade at Level 3) -->
+              <div id="branch-choice-container">
+                <div class="branch-title">
+                  <span>⭐ LEVEL 4 SPECIALIZATION FORK</span>
+                </div>
+                <div class="branch-grid">
+                  <button id="btn-branch-a" class="branch-btn" data-branch="A">
+                    <div class="branch-btn-name">
+                      <span id="branch-a-name">Path A: Sniper Railgun</span>
+                      <span id="branch-a-cost">180 ⬢</span>
+                    </div>
+                    <div class="branch-btn-desc" id="branch-a-desc">+70% Range, extreme armor-piercing damage.</div>
+                  </button>
+
+                  <button id="btn-branch-b" class="branch-btn" data-branch="B">
+                    <div class="branch-btn-name">
+                      <span id="branch-b-name">Path B: Pulse Accelerator</span>
+                      <span id="branch-b-cost">180 ⬢</span>
+                    </div>
+                    <div class="branch-btn-desc" id="branch-b-desc">Hyper fire-rate with 2x shield shredding.</div>
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 
-          <!-- Threat Intel Guide -->
+          <!-- Threat Intel Guide (Clickable to open Codex) -->
           <section>
-            <div class="panel-section-title">
+            <div class="panel-section-title" style="display:flex; justify-content:space-between; align-items:center;">
               <span>HOSTILE SIGNATURES</span>
+              <button id="btn-open-codex-link" style="background:none; border:none; color:#38bdf8; font-size:0.68rem; font-weight:700; cursor:pointer;">VIEW CODEX ↗</button>
             </div>
             <div class="intel-card">
-              <div class="enemy-row">
+              <div class="enemy-row codex-quick-btn" data-enemy="scout">
                 <div class="enemy-icon-dot" style="background: #38bdf8; box-shadow: 0 0 6px #38bdf8;"></div>
                 <div class="enemy-info-text">
                   <div class="enemy-info-name">Scout Runner</div>
-                  <div class="enemy-info-desc">Very high speed (2.8x), light hull. Vulnerable to Gatling.</div>
+                  <div class="enemy-info-desc">Very high speed (135), light hull. Weak to Gatling.</div>
                 </div>
               </div>
-              <div class="enemy-row">
+              <div class="enemy-row codex-quick-btn" data-enemy="infiltrator">
+                <div class="enemy-icon-dot" style="background: #10b981; box-shadow: 0 0 6px #10b981;"></div>
+                <div class="enemy-info-text">
+                  <div class="enemy-info-name">Infiltrator (Cloaked)</div>
+                  <div class="enemy-info-desc">Periodically cloaks. Takes 30% reduced damage.</div>
+                </div>
+              </div>
+              <div class="enemy-row codex-quick-btn" data-enemy="shielded">
+                <div class="enemy-icon-dot" style="background: #06b6d4; box-shadow: 0 0 6px #06b6d4;"></div>
+                <div class="enemy-info-text">
+                  <div class="enemy-info-name">Shielded Cruiser</div>
+                  <div class="enemy-info-desc">Recharging shield. Weak to EMP Disruptor.</div>
+                </div>
+              </div>
+              <div class="enemy-row codex-quick-btn" data-enemy="goliath">
                 <div class="enemy-icon-dot" style="background: #f43f5e; box-shadow: 0 0 6px #f43f5e;"></div>
                 <div class="enemy-info-text">
                   <div class="enemy-info-name">Goliath Tank</div>
-                  <div class="enemy-info-desc">Massive hitpoints & heavy armor plating. Slow movement.</div>
+                  <div class="enemy-info-desc">Massive HP & 35% armor plating. Weak to Railgun.</div>
                 </div>
               </div>
-              <div class="enemy-row">
+              <div class="enemy-row codex-quick-btn" data-enemy="swarmer">
                 <div class="enemy-icon-dot" style="background: #eab308; box-shadow: 0 0 6px #eab308;"></div>
                 <div class="enemy-info-text">
                   <div class="enemy-info-name">Swarmer Carrier</div>
-                  <div class="enemy-info-desc">On destruction ruptures into 3 mini-swarm runners.</div>
+                  <div class="enemy-info-desc">On rupture releases 3 mini-swarm runners.</div>
                 </div>
               </div>
-              <div class="enemy-row">
+              <div class="enemy-row codex-quick-btn" data-enemy="boss">
                 <div class="enemy-icon-dot" style="background: #a855f7; box-shadow: 0 0 6px #a855f7;"></div>
                 <div class="enemy-info-text">
                   <div class="enemy-info-name">Apex Dreadnought</div>
-                  <div class="enemy-info-desc">Periodic elite boss. Massive shields & resistance.</div>
+                  <div class="enemy-info-desc">Colossal boss appearing every 5 waves.</div>
                 </div>
               </div>
             </div>
           </section>
 
-          <!-- Keyboard Shortcuts -->
+          <!-- Shortcuts -->
           <section style="margin-top:auto;">
-            <div style="font-size:0.7rem; color:#64748b; line-height: 1.5; background: rgba(15,23,42,0.4); padding: 0.5rem; border-radius: 6px; border: 1px dashed rgba(148,163,184,0.15);">
-              <div><b style="color:#94a3b8;">[1, 2, 3]</b> Select Tower to build</div>
-              <div><b style="color:#94a3b8;">[ESC]</b> Cancel build / Deselect</div>
-              <div><b style="color:#94a3b8;">[SPACE]</b> Pause / Resume</div>
-              <div><b style="color:#94a3b8;">[N]</b> Launch next wave</div>
-              <div><b style="color:#94a3b8;">[U]</b> Upgrade selected | <b style="color:#94a3b8;">[S]</b> Sell</div>
+            <div style="font-size:0.68rem; color:#64748b; line-height: 1.5; background: rgba(15,23,42,0.4); padding: 0.5rem; border-radius: 6px; border: 1px dashed rgba(148,163,184,0.15);">
+              <div><b style="color:#94a3b8;">[1-5]</b> Towers | <b style="color:#94a3b8;">[6-8]</b> Traps & Mines</div>
+              <div><b style="color:#94a3b8;">[Q / E / R]</b> Superweapons: EMP, Orbital, Overdrive</div>
+              <div><b style="color:#94a3b8;">[T]</b> Tech Tree | <b style="color:#94a3b8;">[C]</b> Codex | <b style="color:#94a3b8;">[D]</b> Debrief</div>
+              <div><b style="color:#94a3b8;">[G]</b> Ranges | <b style="color:#94a3b8;">[A]</b> Achievements | <b style="color:#94a3b8;">[N]</b> Wave</div>
             </div>
           </section>
         </aside>
       </main>
+
+      <!-- Persistent Tech Tree Modal -->
+      <div id="tech-modal">
+        <div class="modal-dialog-large">
+          <div class="achievements-modal-header">
+            <div>
+              <span style="font-size:0.68rem; font-weight:800; letter-spacing:0.08em; color:#38bdf8; text-transform:uppercase;">RESEARCH & DEVELOPMENT UPLINK</span>
+              <h3 style="margin:2px 0 0; font-size:1.15rem; font-weight:800; color:#f8fafc;">COMMAND TECH TREE</h3>
+            </div>
+            <div style="display:flex; align-items:center; gap:1rem;">
+              <div style="background:rgba(250,204,21,0.15); border:1px solid #facc15; border-radius:6px; padding:4px 10px; font-weight:800; color:#facc15; font-size:0.8rem;">
+                ⭐ <span id="tech-points-count">3</span> TECH POINTS
+              </div>
+              <button id="btn-reset-tech" class="hud-btn" style="font-size:0.7rem;" title="Reset all tech points">RESET</button>
+              <button id="btn-close-tech" class="btn-modal-close">✕</button>
+            </div>
+          </div>
+          <div id="tech-nodes-list" class="tech-grid">
+            <!-- Dynamically populated nodes -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Tactical After-Action Debrief Modal -->
+      <div id="debrief-modal">
+        <div class="modal-dialog-large">
+          <div class="achievements-modal-header">
+            <div>
+              <span style="font-size:0.68rem; font-weight:800; letter-spacing:0.08em; color:#10b981; text-transform:uppercase;">TACTICAL COMBAT TELEMETRY</span>
+              <h3 style="margin:2px 0 0; font-size:1.15rem; font-weight:800; color:#f8fafc;">AFTER-ACTION DEBRIEF</h3>
+            </div>
+            <button id="btn-close-debrief" class="btn-modal-close">✕</button>
+          </div>
+          <div class="debrief-content">
+            <div class="debrief-summary-grid">
+              <div id="debrief-rank" class="debrief-rank-badge rank-s">S</div>
+              <div id="debrief-mvp-card" class="mvp-card">
+                <!-- Dynamically populated MVP tower -->
+              </div>
+              <div style="display:flex; flex-direction:column; gap:4px; font-size:0.78rem;">
+                <div>TOTAL COMBAT DAMAGE: <b id="debrief-total-damage" style="color:#facc15;">0</b></div>
+                <div>ELEMENTAL COMBOS: <b id="debrief-combos-count" style="color:#e879f9;">0</b></div>
+                <div>TRAPS DETONATED: <b id="debrief-hazards-count" style="color:#38bdf8;">0</b></div>
+              </div>
+            </div>
+
+            <div class="debrief-bars-container">
+              <div style="font-size:0.75rem; font-weight:800; color:#94a3b8; text-transform:uppercase;">DAMAGE CONTRIBUTION BY TOWER ARCHETYPE</div>
+              <div class="debrief-bar-row">
+                <div class="debrief-bar-header">
+                  <span>Gatling Laser / Sniper Railgun</span>
+                  <span id="debrief-val-gatling">0% (0)</span>
+                </div>
+                <div class="debrief-bar-track">
+                  <div class="debrief-bar-fill" id="debrief-bar-gatling" style="background:#06b6d4; width:0%;"></div>
+                </div>
+              </div>
+              <div class="debrief-bar-row">
+                <div class="debrief-bar-header">
+                  <span>Plasma Mortar / Seismic Napalm</span>
+                  <span id="debrief-val-mortar">0% (0)</span>
+                </div>
+                <div class="debrief-bar-track">
+                  <div class="debrief-bar-fill" id="debrief-bar-mortar" style="background:#f59e0b; width:0%;"></div>
+                </div>
+              </div>
+              <div class="debrief-bar-row">
+                <div class="debrief-bar-header">
+                  <span>Frost Beam / Blizzard Core</span>
+                  <span id="debrief-val-frost">0% (0)</span>
+                </div>
+                <div class="debrief-bar-track">
+                  <div class="debrief-bar-fill" id="debrief-bar-frost" style="background:#8b5cf6; width:0%;"></div>
+                </div>
+              </div>
+              <div class="debrief-bar-row">
+                <div class="debrief-bar-header">
+                  <span>Tesla Coil / EMP Disruptor</span>
+                  <span id="debrief-val-tesla">0% (0)</span>
+                </div>
+                <div class="debrief-bar-track">
+                  <div class="debrief-bar-fill" id="debrief-bar-tesla" style="background:#38bdf8; width:0%;"></div>
+                </div>
+              </div>
+              <div class="debrief-bar-row">
+                <div class="debrief-bar-header">
+                  <span>Thermal Incinerator / Hellfire</span>
+                  <span id="debrief-val-incinerator">0% (0)</span>
+                </div>
+                <div class="debrief-bar-track">
+                  <div class="debrief-bar-fill" id="debrief-bar-incinerator" style="background:#ef4444; width:0%;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Hostile Codex Modal -->
+      <div id="codex-modal">
+        <div class="modal-dialog-large">
+          <div class="achievements-modal-header">
+            <div>
+              <span style="font-size:0.68rem; font-weight:800; letter-spacing:0.08em; color:#a855f7; text-transform:uppercase;">HOSTILE COMBAT TELEMETRY</span>
+              <h3 style="margin:2px 0 0; font-size:1.15rem; font-weight:800; color:#f8fafc;">TACTICAL CODEX</h3>
+            </div>
+            <button id="btn-close-codex" class="btn-modal-close">✕</button>
+          </div>
+          <div class="codex-layout">
+            <div class="codex-nav">
+              <button class="codex-nav-item active" data-enemy="scout">⚡ Scout Runner</button>
+              <button class="codex-nav-item" data-enemy="infiltrator">👻 Stealth Infiltrator</button>
+              <button class="codex-nav-item" data-enemy="shielded">🛡️ Shielded Cruiser</button>
+              <button class="codex-nav-item" data-enemy="goliath">🐢 Goliath Hex-Tank</button>
+              <button class="codex-nav-item" data-enemy="swarmer">🐝 Swarmer Carrier</button>
+              <button class="codex-nav-item" data-enemy="mini-swarmer">✨ Mini-Swarmer</button>
+              <button class="codex-nav-item" data-enemy="boss">👑 Apex Dreadnought</button>
+            </div>
+            <div class="codex-details">
+              <div class="codex-header-row">
+                <canvas id="codex-preview-canvas" width="90" height="90"></canvas>
+                <div>
+                  <h4 id="codex-enemy-name" style="margin:0 0 4px; font-size:1.1rem; color:#f8fafc;">Scout Runner</h4>
+                  <p id="codex-enemy-desc" style="margin:0; font-size:0.75rem; color:#94a3b8; line-height:1.4;">
+                    Light reconnaissance strike craft with ultra-high evasion velocity.
+                  </p>
+                </div>
+              </div>
+
+              <div class="codex-stats-grid">
+                <div class="codex-stat-box">
+                  <div class="codex-stat-label">HULL HP</div>
+                  <div class="codex-stat-val" id="codex-stat-hp">45</div>
+                </div>
+                <div class="codex-stat-box">
+                  <div class="codex-stat-label">SPEED</div>
+                  <div class="codex-stat-val" id="codex-stat-speed">135 px/s</div>
+                </div>
+                <div class="codex-stat-box">
+                  <div class="codex-stat-label">ARMOR</div>
+                  <div class="codex-stat-val" id="codex-stat-armor">0%</div>
+                </div>
+                <div class="codex-stat-box">
+                  <div class="codex-stat-label">SHIELDS</div>
+                  <div class="codex-stat-val" id="codex-stat-shield">0</div>
+                </div>
+              </div>
+
+              <div style="background:rgba(20,32,54,0.6); border:1px solid rgba(148,163,184,0.15); border-radius:6px; padding:0.75rem;">
+                <div style="font-size:0.72rem; font-weight:800; color:#38bdf8; margin-bottom:2px;">SIGNATURE TRAITS & ABILITIES</div>
+                <div id="codex-enemy-traits" style="font-size:0.75rem; color:#cbd5e1;">High Speed, Light Hull, Swarm Formations.</div>
+              </div>
+
+              <div style="background:rgba(20,32,54,0.6); border:1px solid rgba(148,163,184,0.15); border-radius:6px; padding:0.75rem;">
+                <div style="font-size:0.72rem; font-weight:800; color:#facc15; margin-bottom:2px;">RECOMMENDED TACTICAL COUNTERS</div>
+                <div id="codex-enemy-counters" style="font-size:0.75rem; color:#cbd5e1;">Gatling Laser, Laser Tripwires, Frost Beam.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tactical Achievements Modal -->
+      <div id="achievements-modal">
+        <div class="achievements-card">
+          <div class="achievements-modal-header">
+            <div>
+              <span style="font-size:0.68rem; font-weight:800; letter-spacing:0.08em; color:#facc15; text-transform:uppercase;">DEFENSE COMMAND COMMENDATIONS</span>
+              <h3 style="margin:2px 0 0; font-size:1.15rem; font-weight:800; color:#f8fafc;">TACTICAL ACHIEVEMENTS</h3>
+            </div>
+            <button id="btn-close-achievements" class="btn-modal-close" title="Close achievements modal">✕</button>
+          </div>
+          <div class="achievements-progress-summary">
+            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#94a3b8; font-weight:600;">
+              <span>COMMENDATION PROGRESS</span>
+              <span id="achievements-completion-label">0 of 14 Unlocked (0%)</span>
+            </div>
+            <div class="achievements-progress-bar">
+              <div id="achievements-progress-fill" class="achievements-progress-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div id="achievements-list" class="achievements-list">
+            <!-- Dynamically populated rows -->
+          </div>
+        </div>
+      </div>
 
       <!-- Game Over / Victory Modal -->
       <div id="modal-overlay">
@@ -276,12 +641,14 @@
               <span class="modal-stat-val" id="modal-towers">0</span>
             </div>
           </div>
-          <button id="btn-modal-restart" class="btn-restart">REDEPLOY DEFENSE GRID</button>
+          <div style="display:flex; gap:0.5rem; width:100%;">
+            <button id="btn-view-debrief-modal" class="btn-restart" style="background:#0284c7; flex:1;">VIEW DEBRIEF REPORT</button>
+            <button id="btn-modal-restart" class="btn-restart" style="flex:1;">REDEPLOY DEFENSE GRID</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Application Script Entry Point -->
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
